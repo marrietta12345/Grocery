@@ -1,60 +1,52 @@
 FROM php:8.1-apache
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+RUN apt-get update && apt-get install -y \
     git \
-    zip \
+    curl \
     unzip \
     libzip-dev \
     mysql-client \
-    wget \
-    gnupg \
-    ca-certificates \
-    libapache2-mod-php \
-    php8.1-mysql \
-    && docker-php-ext-install zip pdo pdo_mysql \
-    && rm -rf /var/lib/apt/lists/*
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
-RUN a2enmod headers
-
-# Install Node.js
-RUN apt-get update && apt-get install -y \
-    nodejs npm \
-    && rm -rf /var/lib/apt/lists/*
+# Enable Apache modules
+RUN a2enmod rewrite headers
 
 # Install Composer
-COPY --from=composer:2.6 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Set workdir
 WORKDIR /app
 
-# Copy application files
+# Copy files
 COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p storage bootstrap/cache public/storage && \
-    chmod -R 777 storage bootstrap/cache
+# Create directories
+RUN mkdir -p storage bootstrap/cache public/storage
 
-# Install PHP dependencies
-RUN composer install --no-interaction --no-dev --optimize-autoloader --prefer-dist || exit 0
+# Set permissions
+RUN chmod -R 755 storage bootstrap/cache && chown -R www-data:www-data /app
 
-# Install Node dependencies
-RUN npm install --legacy-peer-deps || exit 0
+# Install PHP dependencies only (skip NPM build)
+RUN composer install --no-dev --no-interaction --optimize-autoloader --no-scripts
 
-# Build assets - don't fail if this doesn't work
-RUN npm run production 2>/dev/null || npm run dev 2>/dev/null || true
+# Run post-install scripts
+RUN composer run-script post-install-cmd
 
-# Copy Apache configuration
-RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-enabled/000-default.conf && \
-    echo 'DocumentRoot /app/public' >> /etc/apache2/sites-enabled/000-default.conf && \
-    echo 'SetEnv HOME /tmp' >> /etc/apache2/sites-enabled/000-default.conf && \
-    echo '</VirtualHost>' >> /etc/apache2/sites-enabled/000-default.conf
+# Configure Apache to serve Laravel
+RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/laravel.conf && \
+    echo 'ServerName localhost' >> /etc/apache2/sites-available/laravel.conf && \
+    echo 'DocumentRoot /app/public' >> /etc/apache2/sites-available/laravel.conf && \
+    echo '<Directory /app>' >> /etc/apache2/sites-available/laravel.conf && \
+    echo 'AllowOverride All' >> /etc/apache2/sites-available/laravel.conf && \
+    echo 'Require all granted' >> /etc/apache2/sites-available/laravel.conf && \
+    echo '</Directory>' >> /etc/apache2/sites-available/laravel.conf && \
+    echo '</VirtualHost>' >> /etc/apache2/sites-available/laravel.conf && \
+    a2ensite laravel.conf && a2dissite 000-default.conf
 
-# Expose port
+# Expose port 80
 EXPOSE 80
 
 # Start Apache
-ENTRYPOINT ["apache2ctl"]
-CMD ["-D", "FOREGROUND"]
+CMD ["apache2-foreground"]
