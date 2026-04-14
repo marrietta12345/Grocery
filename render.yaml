@@ -12,12 +12,9 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: APP_URL
-        value: https://e-commerce.render.com
         scope: build
       - key: LOG_CHANNEL
         value: stderr
-      - key: PORT
-        value: "8080"
       - key: DB_CONNECTION
         value: mysql
       - key: DB_PORT
