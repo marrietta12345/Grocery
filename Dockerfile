@@ -1,19 +1,23 @@
-FROM php:8.1-alpine
+FROM php:8.1-bullseye
 
 # Install system dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     curl \
     git \
     zip \
     unzip \
+    libzip-dev \
     mariadb-client \
-    && docker-php-ext-install pdo pdo_mysql
+    default-mysql-client \
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
+    && apt-get install -y nodejs
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Install Node.js
-RUN apk add --no-cache nodejs npm
 
 WORKDIR /app
 
@@ -23,14 +27,14 @@ COPY . .
 # Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Install Node dependencies and build
-RUN npm install --legacy-peer-deps && npm run production || echo "Asset build failed, continuing..."
+# Install Node dependencies
+RUN npm install --legacy-peer-deps
+
+# Build assets
+RUN npm run production 2>/dev/null || true
 
 # Set permissions
-RUN chown -R nobody:nobody /app && chmod -R 755 /app/storage /app/bootstrap/cache
-
-# Generate app key
-RUN php artisan key:generate || true
+RUN chmod -R 755 storage bootstrap/cache
 
 # Expose port
 EXPOSE 8080
