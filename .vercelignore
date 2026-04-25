@@ -1,0 +1,8 @@
+.env
+.git
+.github
+.idea
+storage/logs/*
+storage/framework/*
+node_modules
+tests
